@@ -1,0 +1,407 @@
+venv
+.idea
+*.pyc
+__pycache__
+
+ pytorch / translate
+
+ Problemas decódigo15Solicitudes de extracción48Proyectos0AccionesWikiSeguridad0PulseCommunity        
+
+translate /pytorch_translate /bleu_significance.py /
+
+@theweiho remuestreo de arranque emparejado de theweiho para calcular la significación estadística para ...
+
+4e47a47
+
+on 11 Mar 2019
+
+217 líneas (193 sloc)  6.78 KB
+
+ 
+
+#! / usr / bin / env python3
+
+importar  argparse
+
+desde  escribir  Importar  lista , NamedTuple , Opcional
+
+importar  numpy  como  np
+
+importar  pandas  como  pd
+
+importación  sacrebleu
+
+def  get_sufficient_stats (
+
+    traducciones : Lista [ str ], referencias : Lista [ str ]
+
+) -> pd . Marco de datos :
+
+    afirmar  len ( traducciones ) ==  len ( referencias ), (
+
+        f "Hay { len ( traducciones ) } oraciones traducidas"
+
+        f "pero { len ( referencias ) } oraciones de referencia"
+
+    )
+
+    afirmar  sacrebleu . NGRAM_ORDER  ==  4 , (
+
+        f "Se esperaba que SacreBLEU usara n-gramo orden 4"
+
+        f "en lugar de { sacrebleu . NGRAM_ORDER } ".
+
+    )
+
+    suficientes_estad : Lista [ Lista [ int ]] = []
+
+    para  oración , ref  in  zip ( traducciones , referencias ):
+
+        sentencia_bleu  =  sacrebleu . corpus_bleu (
+
+            sys_stream = oración ,
+
+            ref_streams = ref ,
+
+            minúsculas = Falso ,
+
+            tokenize = "ninguno" ,
+
+            use_effective_order = False ,
+
+        )
+
+        suficientes_estad . agregar (
+
+            [
+
+                # Número de 1 gramos correctos, .., 4 gramos
+
+                oración_bleu . cuenta [ 0 ],
+
+                oración_bleu . cuenta [ 1 ],
+
+                oración_bleu . cuenta [ 2 ],
+
+                oración_bleu . cuenta [ 3 ],
+
+                # Número total de 1 gramos, .., 4 gramos
+
+                oración_bleu . totales [ 0 ],
+
+                oración_bleu . totales [ 1 ],
+
+                oración_bleu . totales [ 2 ],
+
+                oración_bleu . totales [ 3 ],
+
+                # Longitud de la oración traducida.
+
+                oración_bleu . sys_len ,
+
+                # Longitud de la oración de referencia.
+
+                oración_bleu . ref_len ,
+
+            ]
+
+        )
+
+    volver  pd . DataFrame (
+
+        suficientes_estad ,
+
+        columnas = [
+
+            "correct_1_grams" ,
+
+            "correct_2_grams" ,
+
+            "correct_3_grams" ,
+
+            "correct_4_grams" ,
+
+            "total_1_grams" ,
+
+            "total_2_grams" ,
+
+            "total_3_grams" ,
+
+            "total_4_grams" ,
+
+            "traducción_length" ,
+
+            "reference_length" ,
+
+        ],
+
+    )
+
+def  calc_bleu_from_stats ( sentence_stats : pd . trama de datos ) -> sacrebleu . BLEU :
+
+    corpus_stats  =  sentencia_stats . suma ( eje = 0 )
+
+    corpus_bleu  =  sacrebleu . compute_bleu (
+
+        correcto = [
+
+            corpus_stats . correct_1_grams ,
+
+            corpus_stats . correct_2_grams ,
+
+            corpus_stats . correct_3_grams ,
+
+            corpus_stats . correct_4_grams ,
+
+        ],
+
+        total = [
+
+            corpus_stats . total_1_gramos ,
+
+            corpus_stats . total_2_grams ,
+
+            corpus_stats . total_3_gramos ,
+
+            corpus_stats . total_4_gramos ,
+
+        ],
+
+        sys_len = corpus_stats . longitud de traducción ,
+
+        ref_len = corpus_stats . longitud_de referencia ,
+
+    )
+
+    volver  corpus_bleu
+
+clase  PairedBootstrapOutput ( NamedTuple ):
+
+    baseline_bleu : sacrebleu . BLEU
+
+    new_bleu : sacrebleu . BLEU
+
+    num_samples : int
+
+    # Número de muestras donde la línea de base fue mejor que la nueva.
+
+    baseline_better : int
+
+    # Número de muestras donde la línea de base y la nueva tenían una puntuación BLEU idéntica.
+
+    num_equal : int
+
+    # Número de muestras donde el nuevo era mejor que la línea de base.
+
+    new_better : int
+
+def  paired_bootstrap_resample (
+
+    baseline_stats : pd . DataFrame ,
+
+    new_stats : pd . DataFrame ,
+
+    num_samples : int  =  1000 ,
+
+    sample_size : Opcional [ int ] =  Ninguno ,
+
+) -> PairedBootstrapOutput :
+
+    "" "
+
+    De http://aclweb.org/anthology/W04-3250
+
+    Pruebas de significación estadística para la evaluación de traducción automática (Koehn, 2004)
+
+    "" "
+
+    afirmar  len ( baseline_stats ) ==  len ( new_stats ), (
+
+        f "No coinciden las longitudes: la línea de base tiene { len ( baseline_stats ) } líneas"
+
+        f "while new tiene { len ( new_stats ) } líneas".
+
+    )
+
+    num_sentences  =  len ( baseline_stats )
+
+    si  no  sample_size :
+
+        # El valor predeterminado es muestrear nuevos corpus del mismo tamaño que el original.
+
+        # Esto no es idéntico al corpus original ya que estamos muestreando
+
+        # con reemplazo.
+
+        sample_size  =  num_sentences
+
+    índices  =  np . al azar . randint (
+
+        low = 0 , high = num_sentences , size = ( num_samples , sample_size )
+
+    )
+
+    baseline_better : int  =  0
+
+    new_better : int  =  0
+
+    num_equal : int  =  0
+
+    para  índice  en  índices :
+
+        baseline_bleu  =  calc_bleu_from_stats ( baseline_stats . iloc [ index ]). Puntuación
+
+        new_bleu  =  calc_bleu_from_stats ( new_stats . iloc [ index ]). Puntuación
+
+        si  new_bleu  >  baseline_bleu :
+
+            new_better  + =  1
+
+        elif  baseline_bleu  >  new_bleu :
+
+            baseline_better  + =  1
+
+        más :
+
+            # Si el cuerpo base y el nuevo cuerpo son idénticos, esto
+
+            # puede ocurrir un caso degenerado.
+
+            num_equal  + =  1
+
+    return  PairedBootstrapOutput (
+
+        baseline_bleu = calc_bleu_from_stats ( baseline_stats ),
+
+        new_bleu = calc_bleu_from_stats ( new_stats ),
+
+        num_samples = num_samples ,
+
+        baseline_better = baseline_better ,
+
+        num_equal = num_equal ,
+
+        new_better = new_better ,
+
+    )
+
+def  paired_bootstrap_resample_from_files (
+
+    reference_file : str ,
+
+    baseline_file : str ,
+
+    archivo_nuevo : str ,
+
+    num_samples : int  =  1000 ,
+
+    sample_size : Opcional [ int ] =  Ninguno ,
+
+) -> PairedBootstrapOutput :
+
+    con  abierto ( archivo de referencia , "r" ) como  f :
+
+        referencias : Lista [ str ] = [ línea  para  línea  en  f ]
+
+    con  abierto ( baseline_file , "r" ) como  f :
+
+        baseline_translations : List [ str ] = [ línea  por  línea  en  f ]
+
+    baseline_stats : pd . DataFrame  =  get_sufficient_stats (
+
+        traducciones = baseline_translations , referencias = referencias
+
+    )
+
+    con  open ( new_file , "r" ) como  f :
+
+        new_translations : List [ str ] = [ línea  por  línea  en  f ]
+
+    new_stats : pd . DataFrame  =  get_sufficient_stats (
+
+        traducciones = nuevas_traducciones , referencias = referencias
+
+    )
+
+    return  paired_bootstrap_resample (
+
+        baseline_stats = baseline_stats ,
+
+        new_stats = new_stats ,
+
+        num_samples = num_samples ,
+
+        sample_size = sample_size ,
+
+    )
+
+def  main ():
+
+    analizador  =  argparse . ArgumentParser ()
+
+    analizador . add_argument (
+
+        "--archivo-referencia" ,
+
+        tipo = str ,
+
+        requerido = verdadero ,
+
+        help = "Archivo de texto que contiene oraciones de referencia tokenizadas (con separador de espacios en blanco)". ,
+
+    )
+
+    analizador . add_argument (
+
+        "--baseline-file" ,
+
+        tipo = str ,
+
+        requerido = verdadero ,
+
+        help = "Archivo de texto que contiene oraciones simbólicas traducidas por el sistema de línea de base". ,
+
+    )
+
+    analizador . add_argument (
+
+        "--nuevo-archivo" ,
+
+        tipo = str ,
+
+        requerido = verdadero ,
+
+        help = "Archivo de texto que contiene oraciones simbólicas traducidas por un nuevo sistema". ,
+
+    )
+
+    args  =  analizador sintáctico . parse_args ()
+
+    salida  =  paired_bootstrap_resample_from_files (
+
+        reference_file = args . archivo_referencia ,
+
+        baseline_file = args . baseline_file ,
+
+        archivo_nuevo = args . nuevo_archivo ,
+
+    )
+
+    print ( f "Baseline BLEU: { output . baseline_bleu . score : .2f } " )
+
+    print ( f "Nuevo BLEU: { output . new_bleu . score : .2f } " )
+
+    print ( f "BLEU delta: { output . new_bleu . score  -  output . baseline_bleu . score : .2f } " )
+
+    imprimir (
+
+        f "Línea base mejor confianza: { output . baseline_better  /  output . num_samples : .2% } "
+
+    )
+
+    print ( f "Nueva mejor confianza: { output . new_better  /  output . num_samples : .2% } " )
+
+if  __name__  ==  "__main__" :
+
+    main ()
+
